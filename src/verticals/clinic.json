@@ -1,0 +1,16 @@
+{
+  "id": "clinic",
+  "businessName": "Riverside Dental",
+  "tagline": "Check-ups and cleanings without the phone queue.",
+  "providerLabel": "doctor",
+  "capacity": 2,
+  "slotStepMin": 15,
+  "currency": "VND",
+  "hours": { "days": [1, 2, 3, 4, 5, 6], "open": "08:00", "close": "17:00" },
+  "accent": "#2a5fb0",
+  "services": [
+    { "id": "checkup", "name": "General check-up", "durationMin": 30, "price": 200000, "keywords": ["check", "checkup", "khám", "kiểm tra"] },
+    { "id": "cleaning", "name": "Scaling and cleaning", "durationMin": 45, "price": 400000, "keywords": ["clean", "cleaning", "cạo vôi", "lấy cao răng"] },
+    { "id": "whitening", "name": "Whitening consult", "durationMin": 30, "price": 0, "keywords": ["whitening", "tẩy trắng", "trắng răng"] }
+  ]
+}

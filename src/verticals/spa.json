@@ -1,0 +1,16 @@
+{
+  "id": "spa",
+  "businessName": "Lotus Day Spa",
+  "tagline": "Massage and body care, booked in under a minute.",
+  "providerLabel": "therapist",
+  "capacity": 3,
+  "slotStepMin": 30,
+  "currency": "VND",
+  "hours": { "days": [0, 1, 2, 3, 4, 5, 6], "open": "09:00", "close": "21:00" },
+  "accent": "#2f7d6d",
+  "services": [
+    { "id": "body-60", "name": "Body massage", "durationMin": 60, "price": 350000, "keywords": ["body", "massage", "toàn thân", "body massage"] },
+    { "id": "foot-45", "name": "Foot reflexology", "durationMin": 45, "price": 220000, "keywords": ["foot", "chân", "reflexology", "foot massage", "massage chân"] },
+    { "id": "hotstone-90", "name": "Hot stone massage", "durationMin": 90, "price": 550000, "keywords": ["hot stone", "đá nóng", "stone"] }
+  ]
+}
