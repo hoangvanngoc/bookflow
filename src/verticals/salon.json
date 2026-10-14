@@ -9,7 +9,7 @@
   "hours": { "days": [0, 2, 3, 4, 5, 6], "open": "10:00", "close": "20:00" },
   "accent": "#a4473a",
   "services": [
-    { "id": "cut", "name": "Haircut and wash", "durationMin": 45, "price": 150000, "keywords": ["cut", "haircut", "cắt", "cắt tóc"] },
+    { "id": "cut", "name": "Haircut and wash", "durationMin": 45, "price": 150000, "keywords": ["haircut", "cut", "cắt", "cắt tóc"] },
     { "id": "color", "name": "Color", "durationMin": 120, "price": 600000, "keywords": ["color", "colour", "nhuộm", "dye"] },
     { "id": "style", "name": "Blow-dry and styling", "durationMin": 30, "price": 120000, "keywords": ["style", "styling", "blow", "sấy", "tạo kiểu"] }
   ]
