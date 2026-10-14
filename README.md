@@ -27,6 +27,15 @@ Customers book the way they already write to a shop: one short message, often in
 - **Two engines, one contract.** A rule parser (English + Vietnamese) runs offline and free by default. Add your own key for any OpenAI-compatible model and the LLM takes over, but its output is validated against the real catalogue and falls back to the rules when it is wrong.
 - **Measured.** The admin view shows the share of bookings that came through the assistant, the number that tells you whether it is worth keeping.
 
+### Book over Zalo chat
+
+Most customers of small Vietnamese businesses never open a booking page; they message the shop on Zalo. Bookflow can answer on the shop's **Zalo Official Account**:
+
+- The same conversation engine runs behind a Zalo OA webhook. Chat has no buttons, so choices go out as a numbered list and the customer replies "3".
+- The adapter verifies Zalo's `X-ZEvent-Signature`, keeps a chat session per customer, re-checks the slot before booking, and replies through the OA message API.
+- The demo's **Zalo chat** page simulates the whole conversation in the browser and shows the exact request the webhook would send to Zalo.
+- A deployable [Cloudflare Worker example](examples/zalo-oa-worker) wires it to KV storage. No credentials are in this repo: the Worker reads them from secrets.
+
 ### Everything around it
 
 - **Booking flow**: the same booking step by step, for people who prefer tapping.
@@ -43,6 +52,7 @@ Customers book the way they already write to a shop: one short message, often in
 | One broken integration must not lose a booking | [`dispatch`](src/lib/channels/index.ts) uses `Promise.allSettled`; failures are logged, the booking stands. |
 | Storage depends on the customer's stack | UI talks to a [`BookingRepository`](src/lib/store.ts) interface. The demo uses browser storage; a real deployment swaps in its backend. |
 | Customers write in their own language and shorthand | [Rule parser](src/lib/assistant/parse.ts) first: offline, free, predictable. [LLM](src/lib/assistant/llm.ts) only as an upgrade, and its output is validated against the real catalogue before use. |
+| Customers live in chat apps, not on booking pages | [`conversation/engine.ts`](src/lib/conversation/engine.ts) is channel-agnostic: state in, reply out. The [Zalo adapter](src/lib/channels/zalo) only handles signature, transport and storage. |
 | Half the messages are incomplete | [`planReply`](src/lib/assistant/reply.ts) turns a partial request into one follow-up question with tappable answers, as a pure, tested function. |
 | No double bookings, ever | [`availableSlots`](src/lib/slots.ts) counts overlapping bookings against capacity, conservatively. |
 
@@ -55,7 +65,7 @@ Requires Node.js 22+ and pnpm (`corepack enable`).
 ```bash
 pnpm install
 pnpm dev          # http://localhost:3000
-pnpm test         # slot logic, parser (EN + VI), follow-up planner, LLM validation, channels
+pnpm test         # slots, parser (EN + VI), follow-up planner, chat engine, Zalo webhook, LLM validation, channels
 pnpm build        # static export to ./out
 ```
 

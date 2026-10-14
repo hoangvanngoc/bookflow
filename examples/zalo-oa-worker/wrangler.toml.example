@@ -1,0 +1,16 @@
+# Copy to wrangler.toml and fill in your own KV namespace id.
+# Secrets are NOT set here. Use:
+#   npx wrangler secret put ZALO_APP_ID
+#   npx wrangler secret put ZALO_OA_SECRET_KEY
+#   npx wrangler secret put ZALO_OA_ACCESS_TOKEN
+
+name = "bookflow-zalo"
+main = "worker.ts"
+compatibility_date = "2026-09-01"
+
+[vars]
+VERTICAL_ID = "spa"
+
+[[kv_namespaces]]
+binding = "BOOKFLOW_KV"
+id = "<your-kv-namespace-id>"

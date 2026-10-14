@@ -27,7 +27,8 @@ export default function AdminPage() {
   const mineIds = new Set(mine.map((b) => b.id));
   const mineLog = log.filter((d) => mineIds.has(d.bookingId));
   const byDate = Object.entries(Object.groupBy(mine, (b) => b.date));
-  const viaAi = mine.filter((b) => b.via === "assistant").length;
+  const viaAi = mine.filter((b) => b.via === "assistant" || b.via === "zalo").length;
+  const viaZalo = mine.filter((b) => b.via === "zalo").length;
   const revenue = mine.reduce((sum, b) => sum + (vertical.services.find((s) => s.id === b.serviceId)?.price ?? 0), 0);
 
   function reset() {
@@ -53,7 +54,7 @@ export default function AdminPage() {
           <span className="muted">Booked via AI</span>
           <strong>{mine.length ? Math.round((viaAi / mine.length) * 100) : 0}%</strong>
           <span className="small">
-            {viaAi} of {mine.length}
+            {viaAi} of {mine.length} · {viaZalo} on Zalo
           </span>
         </div>
         <div className="stat">
@@ -93,7 +94,15 @@ export default function AdminPage() {
                       {b.note && <div className="muted small">{b.note}</div>}
                     </td>
                     <td>{b.phone}</td>
-                    <td>{b.via === "assistant" ? <span className="tag">AI</span> : <span className="muted">Form</span>}</td>
+                    <td>
+                      {b.via === "zalo" ? (
+                        <span className="tag zalo">Zalo</span>
+                      ) : b.via === "assistant" ? (
+                        <span className="tag">AI</span>
+                      ) : (
+                        <span className="muted">Form</span>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>

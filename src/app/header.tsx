@@ -19,6 +19,9 @@ export function Header() {
           <Link href="/" aria-current={path === "/" ? "page" : undefined}>
             Book
           </Link>
+          <Link href="/zalo/" aria-current={path.startsWith("/zalo") ? "page" : undefined}>
+            Zalo chat
+          </Link>
           <Link href="/admin/" aria-current={path.startsWith("/admin") ? "page" : undefined}>
             Admin
           </Link>
