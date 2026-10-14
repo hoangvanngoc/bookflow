@@ -1,6 +1,6 @@
 # Bookflow
 
-A small, config-driven booking app for appointment-based service businesses: spas, clinics, salons.
+A small, config-driven booking app with an **AI booking assistant**, for appointment-based service businesses: spas, clinics, salons.
 
 **Live demo:** https://hoangvanngoc.github.io/bookflow/ (everything runs in your browser; no account, no backend)
 
@@ -9,18 +9,29 @@ A small, config-driven booking app for appointment-based service businesses: spa
 Bookflow is a deliberately small codebase that shows how I approach **forward deployment**: take one product, fit it to a specific business quickly, plug it into the tools that business already uses, and leave behind something the customer's team can operate.
 
 <p>
-  <img src="docs/screenshot-admin.png" alt="Admin view: bookings, integrations and delivery log" width="62%">
-  <img src="docs/screenshot-mobile.png" alt="Choosing a time on a phone" width="30%">
+  <img src="docs/screenshot-mobile.png" alt="The assistant reads a Vietnamese message and offers free times" width="30%">
+  <img src="docs/screenshot-admin.png" alt="Admin view: share of bookings made through the assistant, bookings, integrations" width="62%">
 </p>
 
 > This is a showcase project with fictional businesses and data. It is not a production system: there is no auth, no server-side storage, and no payment handling.
 
 ## What it does
 
-- **Booking flow**: pick a service, a day and a free time, enter name and phone, confirm.
-- **Admin view**: bookings grouped by day, booked value, and a log of every notification sent.
-- **Three deployments from one build**: switch between a spa, a dental clinic and a hair salon in the header. Each one is a single JSON file.
-- **Text assistant**: type `massage tomorrow 3pm` or `mai 3h chiều massage chân` and the form fills itself. Rule-based by default (English and Vietnamese), with an optional LLM path if you bring your own key.
+### AI booking assistant
+
+Customers book the way they already write to a shop: one short message, often in shorthand and mixed languages.
+
+- Type `body massage tomorrow 3pm` or `mai 3h chiều massage chân` and the booking form fills itself.
+- **It asks back instead of failing.** Missing the time? It offers the free slots. Requested time taken? It offers the closest ones. Shop closed that day? It suggests the next open days. Every follow-up is one tap.
+- **Follow-ups keep context.** Reply `4h chiều` and only the time changes; the service and day from the first message stay.
+- **Two engines, one contract.** A rule parser (English + Vietnamese) runs offline and free by default. Add your own key for any OpenAI-compatible model and the LLM takes over, but its output is validated against the real catalogue and falls back to the rules when it is wrong.
+- **Measured.** The admin view shows the share of bookings that came through the assistant, the number that tells you whether it is worth keeping.
+
+### Everything around it
+
+- **Booking flow**: the same booking step by step, for people who prefer tapping.
+- **Admin view**: bookings grouped by day with how each was made, booked value, and a log of every notification sent.
+- **Three deployments from one build**: switch between a spa, a dental clinic and a hair salon in the header. Each one is a single JSON file, including the example messages the assistant suggests.
 - **Integrations**: every booking is fanned out to notification channels. The demo ships a console channel and a generic webhook; point it at [webhook.site](https://webhook.site) to watch the payload arrive.
 
 ## Why it is built this way
@@ -32,6 +43,7 @@ Bookflow is a deliberately small codebase that shows how I approach **forward de
 | One broken integration must not lose a booking | [`dispatch`](src/lib/channels/index.ts) uses `Promise.allSettled`; failures are logged, the booking stands. |
 | Storage depends on the customer's stack | UI talks to a [`BookingRepository`](src/lib/store.ts) interface. The demo uses browser storage; a real deployment swaps in its backend. |
 | Customers write in their own language and shorthand | [Rule parser](src/lib/assistant/parse.ts) first: offline, free, predictable. [LLM](src/lib/assistant/llm.ts) only as an upgrade, and its output is validated against the real catalogue before use. |
+| Half the messages are incomplete | [`planReply`](src/lib/assistant/reply.ts) turns a partial request into one follow-up question with tappable answers, as a pure, tested function. |
 | No double bookings, ever | [`availableSlots`](src/lib/slots.ts) counts overlapping bookings against capacity, conservatively. |
 
 More on this in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), the onboarding runbook in [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md), and the reasoning behind the scope in [docs/CASE_STUDY.md](docs/CASE_STUDY.md).
@@ -43,7 +55,7 @@ Requires Node.js 22+ and pnpm (`corepack enable`).
 ```bash
 pnpm install
 pnpm dev          # http://localhost:3000
-pnpm test         # slot logic, parser (EN + VI), LLM validation, channels
+pnpm test         # slot logic, parser (EN + VI), follow-up planner, LLM validation, channels
 pnpm build        # static export to ./out
 ```
 

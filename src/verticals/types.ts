@@ -30,5 +30,8 @@ export type Vertical = {
   currency: string;
   hours: OpeningHours;
   services: Service[];
+  /** Brand colour for buttons and highlights. Must keep 4.5:1 contrast with white text. */
   accent: string;
+  /** Sample customer messages shown as one-tap chips in the assistant. */
+  examples: string[];
 };

@@ -7,6 +7,8 @@ export type Booking = {
   customerName: string;
   phone: string;
   note: string;
+  /** How the booking was started. Older records have no value and count as "form". */
+  via?: "assistant" | "form";
   createdAt: string; // ISO
 };
 

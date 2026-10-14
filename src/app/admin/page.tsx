@@ -27,6 +27,7 @@ export default function AdminPage() {
   const mineIds = new Set(mine.map((b) => b.id));
   const mineLog = log.filter((d) => mineIds.has(d.bookingId));
   const byDate = Object.entries(Object.groupBy(mine, (b) => b.date));
+  const viaAi = mine.filter((b) => b.via === "assistant").length;
   const revenue = mine.reduce((sum, b) => sum + (vertical.services.find((s) => s.id === b.serviceId)?.price ?? 0), 0);
 
   function reset() {
@@ -48,15 +49,21 @@ export default function AdminPage() {
           <span className="muted">Bookings</span>
           <strong>{mine.length}</strong>
         </div>
+        <div className="stat ai-stat">
+          <span className="muted">Booked via AI</span>
+          <strong>{mine.length ? Math.round((viaAi / mine.length) * 100) : 0}%</strong>
+          <span className="small">
+            {viaAi} of {mine.length}
+          </span>
+        </div>
         <div className="stat">
           <span className="muted">Booked value</span>
           <strong>{formatMoney(revenue, vertical.currency, { zeroAsFree: false })}</strong>
         </div>
         <div className="stat">
           <span className="muted">Capacity</span>
-          <strong>
-            {vertical.capacity} {vertical.providerLabel}s
-          </strong>
+          <strong>{vertical.capacity}</strong>
+          <span className="small muted">{vertical.providerLabel}s at once</span>
         </div>
       </section>
 
@@ -73,6 +80,7 @@ export default function AdminPage() {
                   <th>Service</th>
                   <th>Customer</th>
                   <th>Phone</th>
+                  <th>Via</th>
                 </tr>
               </thead>
               <tbody>
@@ -85,6 +93,7 @@ export default function AdminPage() {
                       {b.note && <div className="muted small">{b.note}</div>}
                     </td>
                     <td>{b.phone}</td>
+                    <td>{b.via === "assistant" ? <span className="tag">AI</span> : <span className="muted">Form</span>}</td>
                   </tr>
                 ))}
               </tbody>
@@ -105,7 +114,9 @@ export default function AdminPage() {
           }}
         >
           <label>
-            Webhook URL <span className="muted">(get a test one at webhook.site)</span>
+            <span>
+              Webhook URL <span className="muted">(get a test one at webhook.site)</span>
+            </span>
             <input
               type="url"
               value={settings.webhookUrl}
@@ -124,7 +135,9 @@ export default function AdminPage() {
               <input value={settings.llmModel} onChange={(e) => setSettings({ ...settings, llmModel: e.target.value })} />
             </label>
             <label>
-              API key <span className="muted">(kept in this tab only, cleared when it closes)</span>
+              <span>
+                API key <span className="muted">(kept in this tab only, cleared when it closes)</span>
+              </span>
               <input
                 type="password"
                 autoComplete="off"

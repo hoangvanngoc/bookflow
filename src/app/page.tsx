@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { Service } from "@/verticals";
 import { parseWithLlm } from "@/lib/assistant/llm";
+import { planReply, type Partial } from "@/lib/assistant/reply";
 import { channelsFor, dispatch, type DeliveryResult } from "@/lib/channels";
 import { appendDeliveryLog } from "@/lib/channels/log";
 import { loadSettings } from "@/lib/settings";
@@ -13,7 +14,11 @@ import type { Booking } from "@/lib/types";
 import { useVertical } from "./providers";
 
 type Step = "service" | "time" | "details" | "done";
+type Option = { kind: "service"; id: string } | { kind: "date"; date: string } | { kind: "time"; time: string };
+type Message = { role: "user" | "assistant"; text: string; options?: Option[]; source?: "rules" | "llm" };
+
 const DAYS_AHEAD = 14;
+const EMPTY: Partial = { serviceId: null, date: null, time: null };
 
 export default function BookPage() {
   const { vertical } = useVertical();
@@ -21,17 +26,20 @@ export default function BookPage() {
   const [service, setService] = useState<Service | null>(null);
   const [date, setDate] = useState(() => toISODate(new Date()));
   const [time, setTime] = useState<string | null>(null);
+  const [via, setVia] = useState<"assistant" | "form">("form");
   const [existing, setExisting] = useState<Booking[]>([]);
   const [confirmed, setConfirmed] = useState<{ booking: Booking; deliveries: DeliveryResult[] } | null>(null);
-  const [hint, setHint] = useState<string | null>(null);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [draft, setDraft] = useState<Partial>(EMPTY);
+  const [mode, setMode] = useState("Offline rules");
+  const formRef = useRef<HTMLDivElement>(null);
 
-  // Switching deployment starts the flow over.
+  // Switching deployment starts everything over.
   useEffect(() => {
-    setStep("service");
-    setService(null);
-    setTime(null);
-    setHint(null);
+    restart();
     setExisting(bookings().list());
+    const s = loadSettings();
+    setMode(s.llmApiKey ? `LLM · ${s.llmModel}` : "Offline rules");
   }, [vertical.id]);
 
   const days = useMemo(() => {
@@ -44,39 +52,88 @@ export default function BookPage() {
     [vertical, service, date, existing],
   );
 
-  function firstDayWithSlots(s: Service): string {
-    return days.find((d) => availableSlots(vertical, s, d, existing).length > 0) ?? days[0];
+  const serviceName = (id: string) => vertical.services.find((s) => s.id === id)?.name ?? id;
+
+  function optionLabel(o: Option): string {
+    if (o.kind === "service") return serviceName(o.id);
+    if (o.kind === "date") return prettyDate(o.date);
+    return o.time;
   }
 
-  async function applyAssistant(text: string) {
+  /** Ask the planner what to say next, sync the manual form, and post the reply. */
+  function respond(next: Partial, source?: "rules" | "llm") {
+    const r = planReply(next, vertical, existing, new Date());
+    setDraft("date" in r ? { ...next, date: r.date } : next);
+    let reply: Message;
+
+    if (r.kind === "ask-service") {
+      reply = {
+        role: "assistant",
+        text: "Which service would you like?",
+        options: vertical.services.map((s) => ({ kind: "service", id: s.id })),
+      };
+    } else {
+      const svc = vertical.services.find((s) => s.id === r.serviceId)!;
+      setService(svc);
+      setVia("assistant");
+      if (r.kind === "ready") {
+        setDate(r.date);
+        setTime(r.time);
+        setStep("details");
+        reply = {
+          role: "assistant",
+          text: `${svc.name}, ${prettyDate(r.date)} at ${r.time} is free. Add your name and phone below to confirm.`,
+        };
+        setTimeout(() => formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
+      } else if (r.kind === "ask-date") {
+        setTime(null);
+        setStep("time");
+        const why = r.reason === "closed" ? `We're closed on ${prettyDate(r.requested)}.` : `${prettyDate(r.requested)} is fully booked.`;
+        reply = {
+          role: "assistant",
+          text: r.options.length ? `${why} These days have room:` : `${why} Nothing free in the next two weeks.`,
+          options: r.options.map((d) => ({ kind: "date", date: d })),
+        };
+      } else {
+        setDate(r.date);
+        setTime(null);
+        setStep("time");
+        const day = prettyDate(r.date);
+        const text = !r.options.length
+          ? `Nothing free on ${day}.`
+          : r.requested
+            ? `${r.requested} is taken on ${day}. Closest free times:`
+            : `${svc.name} on ${day}. What time suits you?`;
+        reply = { role: "assistant", text, options: r.options.map((t) => ({ kind: "time", time: t })) };
+      }
+    }
+    setMessages((m) => [...m, { ...reply, source }]);
+  }
+
+  async function ask(text: string) {
+    setMessages((m) => [...m, { role: "user", text }]);
     const s = loadSettings();
     const parsed = await parseWithLlm(text, vertical, new Date(), {
       baseUrl: s.llmBaseUrl,
       model: s.llmModel,
       apiKey: s.llmApiKey,
     });
-    const svc = vertical.services.find((x) => x.id === parsed.serviceId) ?? null;
-    const notes: string[] = [];
-    if (!svc) {
-      setHint("Couldn't tell which service you mean. Pick one below.");
-      setStep("service");
-      return;
-    }
-    setService(svc);
-    const d = parsed.date ?? toISODate(new Date());
-    setDate(d);
-    const open = availableSlots(vertical, svc, d, existing);
-    if (parsed.time && open.includes(parsed.time)) {
-      setTime(parsed.time);
-      setStep("details");
-    } else {
-      setTime(null);
-      setStep("time");
-      if (!isOpenOn(vertical, d)) notes.push("We're closed that day.");
-      else if (parsed.time) notes.push(`${parsed.time} isn't available.`);
-      notes.push("Choose a time below.");
-    }
-    setHint(`Understood (${parsed.source}): ${svc.name}, ${prettyDate(d)}${parsed.time ? `, ${parsed.time}` : ""}. ${notes.join(" ")}`);
+    // A follow-up message only overrides what it actually mentions.
+    respond(
+      {
+        serviceId: parsed.serviceId ?? draft.serviceId,
+        date: parsed.date ?? draft.date,
+        time: parsed.time ?? draft.time,
+      },
+      parsed.source,
+    );
+  }
+
+  function pick(o: Option) {
+    setMessages((m) => [...m, { role: "user", text: optionLabel(o) }]);
+    if (o.kind === "service") respond({ ...draft, serviceId: o.id });
+    if (o.kind === "date") respond({ ...draft, date: o.date });
+    if (o.kind === "time") respond({ ...draft, time: o.time });
   }
 
   async function submit(form: FormData) {
@@ -89,6 +146,7 @@ export default function BookPage() {
       customerName: String(form.get("name") ?? "").trim(),
       phone: String(form.get("phone") ?? "").trim(),
       note: String(form.get("note") ?? "").trim(),
+      via,
     });
     setExisting(bookings().list());
     const deliveries = await dispatch(
@@ -104,26 +162,81 @@ export default function BookPage() {
     setStep("service");
     setService(null);
     setTime(null);
-    setHint(null);
+    setVia("form");
     setConfirmed(null);
+    setMessages([]);
+    setDraft(EMPTY);
+  }
+
+  function firstDayWithSlots(s: Service): string {
+    return days.find((d) => availableSlots(vertical, s, d, existing).length > 0) ?? days[0];
+  }
+
+  if (step === "done" && confirmed && service) {
+    return (
+      <div className="stack">
+        <section className="card done">
+          <p className="eyebrow">Booking confirmed</p>
+          <h1>See you soon, {confirmed.booking.customerName}.</h1>
+          <dl className="summary">
+            <div>
+              <dt>Service</dt>
+              <dd>{service.name}</dd>
+            </div>
+            <div>
+              <dt>When</dt>
+              <dd>
+                {prettyDate(confirmed.booking.date)} at {confirmed.booking.start}
+              </dd>
+            </div>
+            <div>
+              <dt>Booked via</dt>
+              <dd>{via === "assistant" ? "AI assistant" : "Booking form"}</dd>
+            </div>
+          </dl>
+          <h3>Notifications sent</h3>
+          <ul className="log">
+            {confirmed.deliveries.map((d) => (
+              <li key={d.channel} data-ok={d.ok}>
+                {d.ok ? "OK" : "Failed"} · {d.channel} · {d.detail}
+              </li>
+            ))}
+          </ul>
+          <div className="actions">
+            <button className="primary" onClick={restart}>
+              Book another
+            </button>
+          </div>
+        </section>
+      </div>
+    );
   }
 
   return (
     <div className="stack">
       <section className="hero">
-        <h1>{vertical.businessName}</h1>
-        <p className="muted">{vertical.tagline}</p>
+        <p className="eyebrow">{vertical.businessName}</p>
+        <h1>{vertical.tagline}</h1>
       </section>
 
-      {step !== "done" && (
-        <Assistant
-          onSubmit={applyAssistant}
-          example={`${vertical.services[0].keywords[0]} tomorrow 3pm`}
-        />
-      )}
-      {hint && step !== "done" && <p className="hint">{hint}</p>}
+      <AssistantPanel
+        mode={mode}
+        examples={vertical.examples}
+        messages={messages}
+        optionLabel={optionLabel}
+        onAsk={ask}
+        onPick={pick}
+        onReset={() => {
+          setMessages([]);
+          setDraft(EMPTY);
+        }}
+      />
 
-      {step !== "done" && <Steps step={step} />}
+      <p className="divider">
+        <span>or book step by step</span>
+      </p>
+
+      <Steps step={step} />
 
       {step === "service" && (
         <section className="card">
@@ -137,10 +250,11 @@ export default function BookPage() {
                     setService(s);
                     setDate(firstDayWithSlots(s));
                     setTime(null);
+                    setVia("form");
                     setStep("time");
                   }}
                 >
-                  <span>{s.name}</span>
+                  <span className="row-title">{s.name}</span>
                   <span className="muted">
                     {s.durationMin} min · {formatMoney(s.price, vertical.currency)}
                   </span>
@@ -193,10 +307,11 @@ export default function BookPage() {
       )}
 
       {step === "details" && service && time && (
-        <section className="card">
+        <section className="card" ref={formRef}>
           <h2>Your details</h2>
           <p className="muted">
             {service.name} · {prettyDate(date)} at {time}
+            {via === "assistant" && <span className="tag">Filled by AI</span>}
           </p>
           <form action={submit} className="form">
             <label>
@@ -208,7 +323,9 @@ export default function BookPage() {
               <input name="phone" required type="tel" autoComplete="tel" pattern="[0-9+ ]{8,15}" />
             </label>
             <label>
-              Note <span className="muted">(optional)</span>
+              <span>
+                Note <span className="muted">(optional)</span>
+              </span>
               <textarea name="note" rows={2} />
             </label>
             <div className="actions">
@@ -222,57 +339,116 @@ export default function BookPage() {
           </form>
         </section>
       )}
-
-      {step === "done" && confirmed && service && (
-        <section className="card">
-          <h2>Booked</h2>
-          <p>
-            {confirmed.booking.customerName}, see you {prettyDate(confirmed.booking.date)} at {confirmed.booking.start} for{" "}
-            {service.name}.
-          </p>
-          <h3>Notifications sent</h3>
-          <ul className="log">
-            {confirmed.deliveries.map((d) => (
-              <li key={d.channel} data-ok={d.ok}>
-                {d.ok ? "OK" : "Failed"} · {d.channel} · {d.detail}
-              </li>
-            ))}
-          </ul>
-          <div className="actions">
-            <button className="primary" onClick={restart}>
-              Book another
-            </button>
-          </div>
-        </section>
-      )}
     </div>
   );
 }
 
-function Assistant({ onSubmit, example }: { onSubmit: (text: string) => Promise<void>; example: string }) {
+function AssistantPanel(props: {
+  mode: string;
+  examples: string[];
+  messages: Message[];
+  optionLabel: (o: Option) => string;
+  onAsk: (text: string) => Promise<void>;
+  onPick: (o: Option) => void;
+  onReset: () => void;
+}) {
+  const { mode, examples, messages, optionLabel, onAsk, onPick, onReset } = props;
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
+  const threadRef = useRef<HTMLDivElement>(null);
+  const lastAssistant = messages.findLastIndex((m) => m.role === "assistant");
+
+  useEffect(() => {
+    threadRef.current?.scrollTo({ top: threadRef.current.scrollHeight, behavior: "smooth" });
+  }, [messages.length]);
+
+  async function send(value: string) {
+    if (!value.trim() || busy) return;
+    setText("");
+    setBusy(true);
+    await onAsk(value.trim());
+    setBusy(false);
+  }
+
   return (
-    <form
-      className="assistant"
-      onSubmit={async (e) => {
-        e.preventDefault();
-        if (!text.trim()) return;
-        setBusy(true);
-        await onSubmit(text);
-        setBusy(false);
-      }}
-    >
-      <input
-        value={text}
-        onChange={(e) => setText(e.target.value)}
-        placeholder={`Describe it, e.g. "${example}"`}
-        aria-label="Describe your booking"
+    <section className="ai" aria-label="AI booking assistant">
+      <div className="ai-head">
+        <p className="ai-eyebrow">
+          <SparkIcon /> AI booking assistant
+        </p>
+        <span className="ai-mode" title="Set an LLM key in Admin to switch modes">
+          {mode}
+        </span>
+      </div>
+      <h2 className="ai-title">Tell us what you need, in your own words.</h2>
+
+      {messages.length > 0 && (
+        <div className="thread" ref={threadRef} aria-live="polite">
+          {messages.map((m, i) => (
+            <div key={i} className={`bubble ${m.role}`}>
+              <p>{m.text}</p>
+              {m.source && <span className="bubble-meta">{m.source === "llm" ? "Read by LLM" : "Read by rules"}</span>}
+              {m.options && m.options.length > 0 && (
+                <div className="bubble-options">
+                  {m.options.map((o, j) => (
+                    <button key={j} className="option" disabled={i !== lastAssistant} onClick={() => onPick(o)}>
+                      {optionLabel(o)}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          ))}
+          {busy && <div className="bubble assistant typing">Reading your message…</div>}
+        </div>
+      )}
+
+      <form
+        className="ai-input"
+        onSubmit={(e) => {
+          e.preventDefault();
+          send(text);
+        }}
+      >
+        <input
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          placeholder={messages.length ? "Type a reply…" : "Type what you need…"}
+          aria-label="Message the booking assistant"
+        />
+        <button className="primary" disabled={busy || !text.trim()}>
+          Send
+        </button>
+      </form>
+
+      <div className="ai-foot">
+        {messages.length === 0 ? (
+          <>
+            <span className="ai-try">Try</span>
+            {examples.map((ex) => (
+              <button key={ex} className="example" onClick={() => send(ex)}>
+                {ex}
+              </button>
+            ))}
+          </>
+        ) : (
+          <button className="example" onClick={onReset}>
+            Start over
+          </button>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function SparkIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true">
+      <path
+        fill="currentColor"
+        d="M12 2l1.9 5.6L19.5 9.5l-5.6 1.9L12 17l-1.9-5.6L4.5 9.5l5.6-1.9L12 2zm7 12l.95 2.55L22.5 17.5l-2.55.95L19 21l-.95-2.55L15.5 17.5l2.55-.95L19 14z"
       />
-      <button className="primary" disabled={busy}>
-        {busy ? "Reading…" : "Fill in"}
-      </button>
-    </form>
+    </svg>
   );
 }
 
@@ -284,6 +460,7 @@ function Steps({ step }: { step: Step }) {
     <ol className="steps">
       {labels.map((l, i) => (
         <li key={l} data-state={i < current ? "done" : i === current ? "current" : "todo"}>
+          <span className="step-num">{i + 1}</span>
           {l}
         </li>
       ))}
