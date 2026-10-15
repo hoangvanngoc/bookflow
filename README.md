@@ -4,8 +4,6 @@ A small, config-driven booking app with an **AI booking assistant**, for appoint
 
 **Live demo:** https://hoangvanngoc.github.io/bookflow/ (everything runs in your browser; no account, no backend)
 
-**Full product:** Bookflow is a simplified, open-source take on the booking product I work on: [bookapp.yeowubie.com](https://bookapp.yeowubie.com/landing). None of that product's code is in this repository.
-
 Bookflow is a deliberately small codebase that shows how I approach **forward deployment**: take one product, fit it to a specific business quickly, plug it into the tools that business already uses, and leave behind something the customer's team can operate.
 
 <p>
