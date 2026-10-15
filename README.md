@@ -2,8 +2,6 @@
 
 A small, config-driven booking app with an **AI booking assistant**, for appointment-based service businesses: spas, clinics, salons.
 
-**Live demo:** https://hoangvanngoc.github.io/bookflow/ (everything runs in your browser; no account, no backend)
-
 Bookflow is a deliberately small codebase that shows how I approach **forward deployment**: take one product, fit it to a specific business quickly, plug it into the tools that business already uses, and leave behind something the customer's team can operate.
 
 <p>
